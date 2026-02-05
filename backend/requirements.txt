@@ -1,6 +1,6 @@
 # Core Bayesian Network Library
 pgmpy==0.1.23
-numpy==1.24.3
+numpy==1.26.0
 pandas==2.0.3
 scipy==1.11.1
 
@@ -22,3 +22,7 @@ python-multipart==0.0.6
 
 # Utilities
 python-dotenv==1.0.0
+
+#Setup Tools
+setuptools
+wheel
