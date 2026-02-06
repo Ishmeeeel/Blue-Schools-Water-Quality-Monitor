@@ -7,6 +7,7 @@ to assess water quality risk in real-time.
 
 Author: Blue Schools Project
 Date: 2026
+Version: 2.0 - Enhanced with Percentage Sliders
 """
 
 import streamlit as st
@@ -64,6 +65,16 @@ st.markdown("""
         50% { opacity: 0.7; }
         100% { opacity: 1; }
     }
+    .percentage-display {
+        font-size: 24px;
+        font-weight: bold;
+        color: #0066cc;
+        text-align: center;
+        padding: 10px;
+        background-color: #f0f2f6;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -72,14 +83,55 @@ st.markdown("""
 # ============================================================================
 
 # For local testing
-API_BASE_URL = "http://localhost:8000"
-
-# For production, use environment variable or deployed URL
-# API_BASE_URL = os.getenv("API_URL", "https://your-api.herokuapp.com")
+import os
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
+def percentage_to_category(percentage, categories):
+    """
+    Convert percentage (0-100) to discrete category (0, 1, or 2).
+    
+    Args:
+        percentage: Value from 0-100
+        categories: Number of categories (2 or 3)
+    
+    Returns:
+        Category index (0, 1, or 2)
+    """
+    if categories == 3:
+        # For 3 categories: 0-33% = 0, 34-66% = 1, 67-100% = 2
+        if percentage <= 33:
+            return 0
+        elif percentage <= 66:
+            return 1
+        else:
+            return 2
+    else:  # categories == 2
+        # For 2 categories: 0-50% = 0, 51-100% = 1
+        if percentage <= 50:
+            return 0
+        else:
+            return 1
+
+
+def get_category_label(percentage, labels):
+    """
+    Get the category label based on percentage.
+    
+    Args:
+        percentage: Value from 0-100
+        labels: List of category labels
+    
+    Returns:
+        Current category label
+    """
+    categories = len(labels)
+    category_index = percentage_to_category(percentage, categories)
+    return labels[category_index]
+
 
 def check_api_health():
     """Check if backend API is available."""
@@ -236,7 +288,7 @@ with st.sidebar:
     This tool uses Bayesian AI to assess water contamination risk based on field observations.
     
     **How to use:**
-    1. Select observations below
+    1. Adjust percentage sliders
     2. Click 'Assess Risk'
     3. Follow recommendations
     
@@ -259,42 +311,101 @@ with tab1:
     with col1:
         st.subheader("Environmental Factors")
         
-        rainfall = st.select_slider(
-            "Recent Rainfall",
-            options=[0, 1, 2],
-            format_func=lambda x: ["☀️ Low/None", "🌧️ Medium", "⛈️ Heavy"][x],
-            help="Select the rainfall intensity in the past 24 hours"
+        # Rainfall Slider (0-100%)
+        st.markdown("**Recent Rainfall**")
+        rainfall_pct = st.slider(
+            "Rainfall Intensity",
+            min_value=0,
+            max_value=100,
+            value=50,
+            help="Slide to indicate rainfall intensity in the past 24 hours",
+            label_visibility="collapsed"
         )
         
-        surface_runoff = st.radio(
-            "Surface Water Runoff",
-            options=[0, 1],
-            format_func=lambda x: ["❌ No runoff observed", "✅ Runoff present"][x],
-            help="Is there visible water flowing on the ground surface?"
+        # Show current category
+        rainfall_labels = ["☀️ Low/None (0-33%)", "🌧️ Medium (34-66%)", "⛈️ Heavy (67-100%)"]
+        current_rainfall = get_category_label(rainfall_pct, rainfall_labels)
+        st.markdown(f"""
+            <div class="percentage-display">
+                {rainfall_pct}% - {current_rainfall}
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Surface Runoff Slider (0-100%)
+        st.markdown("**Surface Water Runoff**")
+        runoff_pct = st.slider(
+            "Surface Runoff Presence",
+            min_value=0,
+            max_value=100,
+            value=0,
+            help="Slide to indicate amount of surface water runoff observed",
+            label_visibility="collapsed"
         )
+        
+        runoff_labels = ["❌ No runoff (0-50%)", "✅ Runoff present (51-100%)"]
+        current_runoff = get_category_label(runoff_pct, runoff_labels)
+        st.markdown(f"""
+            <div class="percentage-display">
+                {runoff_pct}% - {current_runoff}
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
         
         st.subheader("Infrastructure")
         
-        latrine_distance = st.radio(
-            "Latrine Distance from Borehole",
-            options=[0, 1],
-            format_func=lambda x: ["✅ Safe (>30 meters)", "⚠️ Too close (<30 meters)"][x],
-            help="Distance between latrine and water source"
+        # Latrine Distance Slider (0-100%)
+        st.markdown("**Latrine Distance from Borehole**")
+        latrine_pct = st.slider(
+            "Latrine Safety",
+            min_value=0,
+            max_value=100,
+            value=100,
+            help="0% = Too close (<30m), 100% = Safe distance (>30m)",
+            label_visibility="collapsed"
         )
+        
+        latrine_labels = ["⚠️ Too close (<30m)", "✅ Safe (>30m)"]
+        current_latrine = get_category_label(latrine_pct, latrine_labels)
+        st.markdown(f"""
+            <div class="percentage-display">
+                {latrine_pct}% - {current_latrine}
+            </div>
+        """, unsafe_allow_html=True)
     
     with col2:
         st.subheader("Water Quality Indicators")
         
-        turbidity = st.select_slider(
-            "Water Clarity (Turbidity)",
-            options=[0, 1, 2],
-            format_func=lambda x: ["💎 Clear", "☁️ Slightly Cloudy", "🌫️ Very Cloudy"][x],
-            help="Hold a glass of water up to light. How cloudy is it?"
+        # Turbidity Slider (0-100%)
+        st.markdown("**Water Clarity (Turbidity)**")
+        turbidity_pct = st.slider(
+            "Turbidity Level",
+            min_value=0,
+            max_value=100,
+            value=0,
+            help="Hold a glass of water up to light. Slide to indicate how cloudy it is",
+            label_visibility="collapsed"
         )
         
-        st.image("https://via.placeholder.com/300x150.png?text=Turbidity+Reference+Chart", 
-                 caption="Reference: Compare your water to this chart",
-                 use_container_width=True)
+        turbidity_labels = ["💎 Clear (0-33%)", "☁️ Slightly Cloudy (34-66%)", "🌫️ Very Cloudy (67-100%)"]
+        current_turbidity = get_category_label(turbidity_pct, turbidity_labels)
+        st.markdown(f"""
+            <div class="percentage-display">
+                {turbidity_pct}% - {current_turbidity}
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Visual guide
+        st.info("""
+        **💡 Turbidity Guide:**
+        - **0-33%**: Crystal clear water
+        - **34-66%**: Slightly hazy/cloudy
+        - **67-100%**: Very cloudy, cannot see through
+        """)
     
     st.markdown("---")
     
@@ -306,6 +417,12 @@ with tab1:
     
     if assess_button:
         with st.spinner("Analyzing water quality..."):
+            # Convert percentages to categories
+            rainfall = percentage_to_category(rainfall_pct, 3)
+            turbidity = percentage_to_category(turbidity_pct, 3)
+            surface_runoff = percentage_to_category(runoff_pct, 2)
+            latrine_distance = percentage_to_category(latrine_pct, 2)
+            
             # Prepare observation data
             observations = {
                 "rainfall": rainfall,
@@ -322,6 +439,22 @@ with tab1:
             
             if result:
                 st.success("✅ Analysis complete!")
+                
+                # Display school information if provided
+                if school_name or location or reporter_name:
+                    st.info(f"""
+                    **📍 Assessment Details:**
+                    - School: {school_name or 'Not provided'}
+                    - Location: {location or 'Not provided'}
+                    - Assessed by: {reporter_name or 'Not provided'}
+                    - Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                    
+                    **📊 Input Percentages:**
+                    - Rainfall: {rainfall_pct}% ({current_rainfall})
+                    - Turbidity: {turbidity_pct}% ({current_turbidity})
+                    - Surface Runoff: {runoff_pct}% ({current_runoff})
+                    - Latrine Distance: {latrine_pct}% ({current_latrine})
+                    """)
                 
                 # Display gauge
                 st.plotly_chart(
@@ -346,10 +479,16 @@ with tab1:
                     
                     st.json(result['evidence_used'])
                 
-                # Save to history
+                # Save to history with percentages
                 history_entry = {
                     'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     'school': school_name or "Unknown",
+                    'location': location or "Unknown",
+                    'reporter': reporter_name or "Unknown",
+                    'rainfall_pct': rainfall_pct,
+                    'turbidity_pct': turbidity_pct,
+                    'runoff_pct': runoff_pct,
+                    'latrine_pct': latrine_pct,
                     'risk_level': result['risk_level'],
                     'probability': result['contamination_probability'],
                     'observations': observations
@@ -368,17 +507,29 @@ with tab2:
     col_pump1, col_pump2 = st.columns(2)
     
     with col_pump1:
-        pump_age = st.radio(
-            "Pump Age",
-            options=[0, 1, 2],
-            format_func=lambda x: ["🆕 New (<2 years)", "⚙️ Medium (2-5 years)", "🔧 Old (>5 years)"][x],
-            help="Approximate age of the water pump"
+        st.markdown("**Pump Age**")
+        pump_age_pct = st.slider(
+            "Pump Age Percentage",
+            min_value=0,
+            max_value=100,
+            value=0,
+            help="0% = New (<2yr), 50% = Medium (2-5yr), 100% = Old (>5yr)",
+            label_visibility="collapsed"
         )
+        
+        pump_labels = ["🆕 New (<2 years)", "⚙️ Medium (2-5 years)", "🔧 Old (>5 years)"]
+        current_pump = get_category_label(pump_age_pct, pump_labels)
+        st.markdown(f"""
+            <div class="percentage-display">
+                {pump_age_pct}% - {current_pump}
+            </div>
+        """, unsafe_allow_html=True)
         
         check_pump_button = st.button("Check Pump Status", type="primary")
     
     with col_pump2:
         if check_pump_button:
+            pump_age = percentage_to_category(pump_age_pct, 3)
             pump_result = get_pump_prediction(pump_age)
             
             if pump_result:
@@ -434,9 +585,10 @@ with tab3:
         
         st.markdown("---")
         
-        # Display history table
-        display_df = df[['timestamp', 'school', 'risk_level', 'probability']].copy()
+        # Display history table with percentages
+        display_df = df[['timestamp', 'school', 'location', 'reporter', 'rainfall_pct', 'turbidity_pct', 'risk_level', 'probability']].copy()
         display_df['probability'] = display_df['probability'].apply(lambda x: f"{x:.1%}")
+        display_df.columns = ['Time', 'School', 'Location', 'Reporter', 'Rainfall %', 'Turbidity %', 'Risk', 'Contamination %']
         
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         
@@ -465,7 +617,7 @@ with tab4:
     st.header("📚 User Guide")
     
     st.markdown("""
-    ### How to Use This Tool
+    ### How to Use This Tool (Version 2.0 - Enhanced)
     
     #### 1️⃣ Gather Observations
     Before using the tool, observe the following at your school's borehole:
@@ -475,10 +627,16 @@ with tab4:
     - **Surface Runoff**: Is there water flowing on the ground?
     - **Latrine Distance**: How far is the nearest latrine? (Should be >30m)
     
-    #### 2️⃣ Input Information
-    - Enter school details in the sidebar
-    - Select your observations using the sliders and buttons
-    - Click "Assess Risk"
+    #### 2️⃣ Adjust Percentage Sliders
+    - **NEW!** Use continuous sliders (0-100%) for precise input
+    - See real-time category labels as you slide
+    - Current percentage is displayed prominently
+    
+    **Slider Guide:**
+    - **Rainfall**: 0% = No rain, 100% = Heavy rain
+    - **Turbidity**: 0% = Crystal clear, 100% = Very cloudy
+    - **Surface Runoff**: 0% = None, 100% = Significant runoff
+    - **Latrine Distance**: 0% = Too close, 100% = Safe distance
     
     #### 3️⃣ Understand Results
     
@@ -493,6 +651,15 @@ with tab4:
     
     ---
     
+    ### What's in this Version 1.0
+    
+    ✅ **Continuous Percentage Sliders**: More precise control (0-100%)  
+    ✅ **Real-time Category Display**: See category as you move slider  
+    ✅ **Percentage History**: Track exact values over time  
+    ✅ **Enhanced Visual Feedback**: Clear percentage indicators  
+    
+    ---
+    
     ### Water Treatment Methods
     
     1. **Boiling**: Boil water for at least 3 minutes
@@ -503,20 +670,20 @@ with tab4:
     
     ### Emergency Contacts
     
-    - **Health Emergency**: 123 (Nigeria Emergency Number)
-    - **Water Quality Issues**: [Local Health Department]
+    - **Health Emergency**: +2348012345678
+    - **Water Quality Issues**: [Minstry of Health]
     - **Technical Support**: support@blueschools.org
     
     ---
     
     ### About the Technology
     
-    This tool uses **Bayesian Networks** - a type of AI that reasons with uncertainty,
-    similar to how a doctor diagnoses patients. It combines multiple observations to
-    calculate the probability of water contamination.
+    This tool uses **Bayesian Networks** - a type of AI that reasons with uncertainty.
+    Your percentage inputs are converted to categories for the AI model while preserving
+    the exact values for your records.
     
-    **Developed by**: Blue Schools Project  
-    **Version**: 1.0.0  
+    **Developed by**: Ismail Usman and Blue Team Project  
+    **Version**: 1.0 
     **Last Updated**: February 2026
     """)
 
@@ -524,7 +691,7 @@ with tab4:
 st.markdown("---")
 st.markdown("""
     <div style='text-align: center; color: #666; padding: 20px;'>
-        <p>💧 Blue Schools Water Quality Monitoring System v1.0</p>
+        <p>💧 Blue Schools Water Quality Monitoring System v2.0</p>
         <p>Powered by Bayesian AI | Built with ❤️ for Nigerian Schools</p>
         <p><small>For technical support: support@blueschools.org</small></p>
     </div>
