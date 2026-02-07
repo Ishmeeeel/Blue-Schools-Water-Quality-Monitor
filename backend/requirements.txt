@@ -1,9 +1,14 @@
-fastapi
-uvicorn
-pgmpy
-numpy
-scipy
-pandas
-pydantic
-setuptools
-wheel
+# Core Bayesian Network Library
+pgmpy==0.1.23
+numpy==1.24.3
+pandas==2.0.3
+scipy==1.11.1
+
+# Web Framework
+streamlit==1.28.0
+
+# Visualization
+plotly==5.18.0
+
+# Utilities
+python-dotenv==1.0.0
