@@ -43,7 +43,7 @@ def inject_css():
         font-family: 'DM Sans', sans-serif;
     }
     .stApp {
-        background-color: #f7fafd;
+        background-color: #f0f6fb;
     }
 
     /* ── Hide Streamlit chrome ── */
@@ -155,12 +155,16 @@ def inject_css():
         font-weight: 600 !important;
         border-radius: 8px !important;
         padding: 0.45rem 0.8rem !important;
-        color: #64748b !important;
+        color: #1a6fa8 !important;
         border: none !important;
     }
     [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
         background: #1a6fa8 !important;
         color: white !important;
+    }
+    [data-testid="stTabs"] [role="tab"]:hover:not([aria-selected="true"]) {
+        background: #e4eef7 !important;
+        color: #0e4d7a !important;
     }
     [data-testid="stTabsContent"] {
         background: white;
@@ -1116,7 +1120,7 @@ def render_sidebar():
         # Language toggle — top of sidebar so it affects everything below
         st.markdown(f'<p class="sidebar-section">{L("language")}</p>', unsafe_allow_html=True)
         lang_choice = st.radio(
-            label="lang_toggle",
+            label="Display Language",
             options=["English", "Hausa"],
             index=0 if st.session_state.lang == "en" else 1,
             horizontal=True,
@@ -1149,13 +1153,20 @@ def render_sidebar():
 
         st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
 
-        # About
+        # About — dark text so it's visible on light sidebar
         st.markdown(f'<p class="sidebar-section">{L("sidebar_about")}</p>', unsafe_allow_html=True)
-        st.caption(L("about_text"))
+        st.markdown(
+            f'<p style="font-size:0.82rem; color:#334155; line-height:1.6; margin:0">'
+            f'{L("about_text")}</p>',
+            unsafe_allow_html=True,
+        )
 
         st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
-        st.caption(L("version"))
-        st.caption(L("m4d_credit"))
+        st.markdown(
+            f'<p style="font-size:0.75rem; color:#64748b; margin:0.2rem 0">{L("version")}</p>'
+            f'<p style="font-size:0.72rem; color:#94a3b8; margin:0">{L("m4d_credit")}</p>',
+            unsafe_allow_html=True,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
