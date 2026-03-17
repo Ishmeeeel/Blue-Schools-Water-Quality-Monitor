@@ -42,8 +42,14 @@ def inject_css():
     html, body, [class*="css"] {
         font-family: 'DM Sans', sans-serif;
     }
-    .stApp {
-        background-color: #f0f6fb;
+    /* ── Background — ice blue ── */
+    .stApp,
+    .stApp > div,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] > section,
+    [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"] {
+        background-color: #f0f6fb !important;
     }
 
     /* ── Hide Streamlit chrome ── */
@@ -52,6 +58,7 @@ def inject_css():
         padding-top: 1.5rem;
         padding-bottom: 2rem;
         max-width: 1100px;
+        background-color: #f0f6fb !important;
     }
 
     /* ── Typography ── */
@@ -141,15 +148,17 @@ def inject_css():
     }
 
     /* ── Tabs ── */
-    [data-testid="stTabs"] [role="tablist"] {
-        background: white;
-        border-radius: 12px;
-        padding: 4px;
-        gap: 2px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-        border: 1px solid #e2e8f0;
+    [data-testid="stTabs"] [role="tablist"],
+    [data-baseweb="tab-list"] {
+        background: white !important;
+        border-radius: 12px !important;
+        padding: 4px !important;
+        gap: 2px !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07) !important;
+        border: 1px solid #e2e8f0 !important;
     }
-    [data-testid="stTabs"] [role="tab"] {
+    [data-testid="stTabs"] [role="tab"],
+    [data-baseweb="tab"] {
         font-family: 'Sora', sans-serif !important;
         font-size: 0.82rem !important;
         font-weight: 600 !important;
@@ -157,14 +166,27 @@ def inject_css():
         padding: 0.45rem 0.8rem !important;
         color: #1a6fa8 !important;
         border: none !important;
+        background: transparent !important;
     }
-    [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"],
+    [data-baseweb="tab"][aria-selected="true"] {
         background: #1a6fa8 !important;
         color: white !important;
     }
-    [data-testid="stTabs"] [role="tab"]:hover:not([aria-selected="true"]) {
+    [data-testid="stTabs"] [role="tab"]:hover:not([aria-selected="true"]),
+    [data-baseweb="tab"]:hover:not([aria-selected="true"]) {
         background: #e4eef7 !important;
         color: #0e4d7a !important;
+    }
+    /* Tab content background */
+    [data-testid="stTabsContent"],
+    [data-baseweb="tab-panel"] {
+        background: white !important;
+        border-radius: 12px !important;
+        padding: 1.5rem !important;
+        margin-top: 0.5rem !important;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.05) !important;
     }
     [data-testid="stTabsContent"] {
         background: white;
@@ -406,6 +428,20 @@ def inject_css():
         text-transform: uppercase;
         letter-spacing: 0.8px;
         margin: 1rem 0 0.5rem 0;
+    }
+
+    /* ── Radio button labels always visible ── */
+    [data-testid="stSidebar"] .stRadio label,
+    [data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p,
+    [data-testid="stSidebar"] div[role="radiogroup"] label span,
+    [data-testid="stSidebar"] div[role="radiogroup"] label p {
+        color: #0f172a !important;
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+        font-family: 'DM Sans', sans-serif !important;
+    }
+    [data-testid="stSidebar"] div[role="radiogroup"] {
+        gap: 0.8rem !important;
     }
 
     /* ── History Table ── */
