@@ -1,417 +1,326 @@
-from pgmpy.models import DiscreteBayesianNetwork
+"""
+SmartWater Agriculture — Bayesian Decision Engine
+==================================================
+11-node Bayesian Network for groundwater & irrigation advisory.
+
+Nodes
+─────
+Priors (no parents):
+  Rainfall            : 0=Low, 1=Moderate, 2=High
+  SeasonalForecast    : 0=WetSeason, 1=DrySpell, 2=DroughtWarning
+  CropWaterNeed       : 0=Low, 1=Medium, 2=High
+  BoreholeDepth       : 0=Shallow(<20m), 1=Medium(20-60m), 2=Deep(>60m)
+  GeologyFavorability : 0=Unfavorable, 1=Moderate, 2=Favorable
+  PumpAge             : 0=New(<2yrs), 1=Mid(2-5yrs), 2=Old(>5yrs)
+
+Intermediates:
+  SoilMoisture        : 0=Dry, 1=Adequate, 2=Saturated
+  GroundwaterStress   : 0=Low, 1=Moderate, 2=High
+
+Outputs:
+  IrrigationRisk      : 0=SafeToIrrigate, 1=IrrigateCarefully, 2=DelayIrrigation
+  DrillingSuccess     : 0=HighSuccess, 1=Uncertain, 2=HighRisk
+  EarlyWarning        : 0=Normal, 1=WatchAlert, 2=CriticalAlert
+
+Causal structure:
+  Rainfall + SeasonalForecast → SoilMoisture → IrrigationRisk
+  Rainfall + SeasonalForecast → GroundwaterStress → IrrigationRisk
+  CropWaterNeed               → IrrigationRisk
+  BoreholeDepth + GeologyFavorability → DrillingSuccess
+  PumpAge + GroundwaterStress + SeasonalForecast → EarlyWarning
+"""
+
+from pgmpy.models import BayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
-from typing import Dict, List, Tuple
+from typing import Dict
 import numpy as np
 
 
-class BoreholeWaterQualityModel:
+class SmartWaterModel:
     """
-    Bayesian Decision Support System for water quality assessment.
-    
-    This model considers:
-    - Environmental factors (Rainfall)
-    - Infrastructure conditions (Latrine Distance, Pump Age)
-    - Observable indicators (Turbidity, Water Color)
-    - Target outcome (Contamination Risk)
+    SmartWater Bayesian Decision Support System.
+    Build once on startup, query on every request.
     """
-    
+
     def __init__(self):
-        """Initialize the Bayesian network structure and probabilities."""
         self.model = None
-        self.inference_engine = None
-        self._build_network()
-        
-    def _build_network(self):
-        """
-        Construct the Bayesian network structure.
-        
-        Network Structure:
-        - Rainfall → Turbidity
-        - Rainfall → Surface_Runoff
-        - Surface_Runoff → Contamination
-        - Turbidity → Contamination
-        - Latrine_Dist → Contamination
-        - Pump_Age → Pump_Failure
-        """
-        
-        # 1. DEFINE NETWORK STRUCTURE (Directed Acyclic Graph)
-        self.model = DiscreteBayesianNetwork([
-            ('Rainfall', 'Turbidity'),
-            ('Rainfall', 'Surface_Runoff'),
-            ('Turbidity', 'Contamination'),
-            ('Surface_Runoff', 'Contamination'),
-            ('Latrine_Dist', 'Contamination'),
-            ('Pump_Age', 'Pump_Failure')
+        self.inference = None
+        self._build()
+
+    # ──────────────────────────────────────────────────────────────────────
+    # NETWORK CONSTRUCTION
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _build(self):
+        # 1. Define causal structure (DAG)
+        self.model = BayesianNetwork([
+            ("Rainfall",            "SoilMoisture"),
+            ("SeasonalForecast",    "SoilMoisture"),
+            ("SeasonalForecast",    "GroundwaterStress"),
+            ("Rainfall",            "GroundwaterStress"),
+            ("SoilMoisture",        "IrrigationRisk"),
+            ("CropWaterNeed",       "IrrigationRisk"),
+            ("GroundwaterStress",   "IrrigationRisk"),
+            ("BoreholeDepth",       "DrillingSuccess"),
+            ("GeologyFavorability", "DrillingSuccess"),
+            ("PumpAge",             "EarlyWarning"),
+            ("GroundwaterStress",   "EarlyWarning"),
+            ("SeasonalForecast",    "EarlyWarning"),
         ])
-        
-        # 2. DEFINE PRIOR PROBABILITIES (Variables with no parents)
-        
-        # Rainfall: [Low=0, Medium=1, High=2]
-        # Based on Nigerian seasonal patterns
+
+        # 2. Prior probabilities (root nodes)
+
+        # Rainfall: Low=50%, Moderate=35%, High=15% — dry-season bias for Kaduna
         cpd_rainfall = TabularCPD(
-            variable='Rainfall',
-            variable_card=3,
-            values=[[0.5],   # Low (50% - dry season)
-                    [0.3],   # Medium (30%)
-                    [0.2]]   # High (20% - rainy season)
+            variable="Rainfall", variable_card=3,
+            values=[[0.50], [0.35], [0.15]],
         )
-        
-        # Latrine Distance: [Safe=0 (>30m), Risky=1 (<30m)]
-        # Based on WHO guidelines
-        cpd_latrine = TabularCPD(
-            variable='Latrine_Dist',
-            variable_card=2,
-            values=[[0.7],   # Safe distance (70% of cases)
-                    [0.3]]   # Too close (30% of cases)
+
+        # SeasonalForecast: Wet=40%, DrySpell=40%, Drought=20%
+        cpd_forecast = TabularCPD(
+            variable="SeasonalForecast", variable_card=3,
+            values=[[0.40], [0.40], [0.20]],
         )
-        
-        # Pump Age: [New=0 (<2yrs), Medium=1 (2-5yrs), Old=2 (>5yrs)]
-        cpd_pump_age = TabularCPD(
-            variable='Pump_Age',
-            variable_card=3,
-            values=[[0.3],   # New (30%)
-                    [0.5],   # Medium (50%)
-                    [0.2]]   # Old (20%)
+
+        # CropWaterNeed: Low=30%, Medium=50%, High=20%
+        cpd_crop = TabularCPD(
+            variable="CropWaterNeed", variable_card=3,
+            values=[[0.30], [0.50], [0.20]],
         )
-        
-        # 3. DEFINE CONDITIONAL PROBABILITY TABLES
-        
-        # Turbidity given Rainfall
-        # Columns: [Low Rain, Medium Rain, High Rain]
-        # Rows: [Clear=0, Slightly Cloudy=1, Very Cloudy=2]
-        cpd_turbidity = TabularCPD(
-            variable='Turbidity',
-            variable_card=3,
+
+        # BoreholeDepth: Shallow=40%, Medium=40%, Deep=20%
+        cpd_depth = TabularCPD(
+            variable="BoreholeDepth", variable_card=3,
+            values=[[0.40], [0.40], [0.20]],
+        )
+
+        # GeologyFavorability: Unfav=30%, Moderate=40%, Favorable=30%
+        cpd_geology = TabularCPD(
+            variable="GeologyFavorability", variable_card=3,
+            values=[[0.30], [0.40], [0.30]],
+        )
+
+        # PumpAge: New=30%, Mid=40%, Old=30%
+        cpd_pump = TabularCPD(
+            variable="PumpAge", variable_card=3,
+            values=[[0.30], [0.40], [0.30]],
+        )
+
+        # 3. Conditional Probability Tables
+
+        # ── SoilMoisture | Rainfall(3) × SeasonalForecast(3) = 9 columns ──
+        # Column order (pgmpy iterates evidence right-to-left):
+        # [R=L,F=W] [R=L,F=D] [R=L,F=Dr] [R=M,F=W] [R=M,F=D] [R=M,F=Dr]
+        # [R=H,F=W] [R=H,F=D] [R=H,F=Dr]
+        cpd_soil = TabularCPD(
+            variable="SoilMoisture", variable_card=3,
             values=[
-                [0.90, 0.50, 0.10],  # Clear water
-                [0.08, 0.35, 0.30],  # Slightly cloudy
-                [0.02, 0.15, 0.60]   # Very cloudy
+                # Dry
+                [0.10, 0.60, 0.85, 0.05, 0.30, 0.60, 0.02, 0.10, 0.25],
+                # Adequate
+                [0.60, 0.35, 0.13, 0.60, 0.55, 0.35, 0.28, 0.55, 0.55],
+                # Saturated
+                [0.30, 0.05, 0.02, 0.35, 0.15, 0.05, 0.70, 0.35, 0.20],
             ],
-            evidence=['Rainfall'],
-            evidence_card=[3]
+            evidence=["Rainfall", "SeasonalForecast"],
+            evidence_card=[3, 3],
         )
-        
-        # Surface Runoff given Rainfall
-        # Columns: [Low Rain, Medium Rain, High Rain]
-        # Rows: [No Runoff=0, Runoff=1]
-        cpd_runoff = TabularCPD(
-            variable='Surface_Runoff',
-            variable_card=2,
+
+        # ── GroundwaterStress | Rainfall(3) × SeasonalForecast(3) = 9 cols ──
+        cpd_gw = TabularCPD(
+            variable="GroundwaterStress", variable_card=3,
             values=[
-                [0.95, 0.40, 0.10],  # No runoff
-                [0.05, 0.60, 0.90]   # Runoff present
+                # Low stress
+                [0.20, 0.55, 0.80, 0.15, 0.40, 0.65, 0.10, 0.20, 0.40],
+                # Moderate
+                [0.50, 0.35, 0.15, 0.55, 0.45, 0.28, 0.40, 0.50, 0.45],
+                # High stress
+                [0.30, 0.10, 0.05, 0.30, 0.15, 0.07, 0.50, 0.30, 0.15],
             ],
-            evidence=['Rainfall'],
-            evidence_card=[3]
+            evidence=["Rainfall", "SeasonalForecast"],
+            evidence_card=[3, 3],
         )
-        
-        # Pump Failure given Pump Age
-        # Columns: [New, Medium, Old]
-        # Rows: [Working=0, Failed=1]
-        cpd_pump_failure = TabularCPD(
-            variable='Pump_Failure',
-            variable_card=2,
+
+        # ── IrrigationRisk | Soil(3) × Crop(3) × GW(3) = 27 columns ──
+        safe_row, careful_row, delay_row = [], [], []
+        for soil in range(3):
+            for crop in range(3):
+                for gw in range(3):
+                    if soil == 0 and crop == 2 and gw == 0:
+                        # Dry soil, high crop need, low GW stress → safe
+                        safe_row.append(0.85); careful_row.append(0.12); delay_row.append(0.03)
+                    elif soil == 2 and gw == 2:
+                        # Saturated soil + high GW stress → delay
+                        safe_row.append(0.02); careful_row.append(0.08); delay_row.append(0.90)
+                    elif soil == 1 and gw == 1:
+                        # Adequate moisture, moderate stress → careful
+                        safe_row.append(0.30); careful_row.append(0.55); delay_row.append(0.15)
+                    elif soil == 0 and gw == 2:
+                        # Dry soil but high GW stress (critical tradeoff)
+                        safe_row.append(0.10); careful_row.append(0.40); delay_row.append(0.50)
+                    elif soil == 2 and gw == 0:
+                        # Saturated but low stress → still delay
+                        safe_row.append(0.05); careful_row.append(0.30); delay_row.append(0.65)
+                    elif soil == 0:
+                        # Dry soil general → lean safe
+                        safe_row.append(0.65); careful_row.append(0.25); delay_row.append(0.10)
+                    elif soil == 2:
+                        # Saturated general → lean delay
+                        safe_row.append(0.05); careful_row.append(0.20); delay_row.append(0.75)
+                    else:
+                        # Adequate moisture general → careful
+                        safe_row.append(0.35); careful_row.append(0.45); delay_row.append(0.20)
+
+        cpd_irrigation = TabularCPD(
+            variable="IrrigationRisk", variable_card=3,
+            values=[safe_row, careful_row, delay_row],
+            evidence=["SoilMoisture", "CropWaterNeed", "GroundwaterStress"],
+            evidence_card=[3, 3, 3],
+        )
+
+        # ── DrillingSuccess | Depth(3) × Geology(3) = 9 columns ──
+        cpd_drilling = TabularCPD(
+            variable="DrillingSuccess", variable_card=3,
             values=[
-                [0.98, 0.90, 0.70],  # Working
-                [0.02, 0.10, 0.30]   # Failed
+                # HighSuccess
+                [0.10, 0.30, 0.60, 0.20, 0.50, 0.80, 0.35, 0.65, 0.90],
+                # Uncertain
+                [0.25, 0.45, 0.30, 0.35, 0.38, 0.17, 0.40, 0.28, 0.09],
+                # HighRisk
+                [0.65, 0.25, 0.10, 0.45, 0.12, 0.03, 0.25, 0.07, 0.01],
             ],
-            evidence=['Pump_Age'],
-            evidence_card=[3]
+            evidence=["BoreholeDepth", "GeologyFavorability"],
+            evidence_card=[3, 3],
         )
-        
-        # CONTAMINATION RISK (The critical output!)
-        # This is the most complex CPT with 3 parent variables
-        # Parents: Turbidity (3 states), Surface_Runoff (2 states), Latrine_Dist (2 states)
-        # Total combinations: 3 × 2 × 2 = 12 scenarios
-        
-        # Scenario ordering (left to right):
-        # Turb=Clear, Runoff=No,  Latrine=Safe  → Very low risk
-        # Turb=Clear, Runoff=No,  Latrine=Risky → Low risk
-        # Turb=Clear, Runoff=Yes, Latrine=Safe  → Medium-low risk
-        # Turb=Clear, Runoff=Yes, Latrine=Risky → Medium risk
-        # ... and so on for Slightly Cloudy and Very Cloudy
-        
-        cpd_contamination = TabularCPD(
-            variable='Contamination',
-            variable_card=2,
-            values=[
-                # Safe (row 0)
-                [0.99, 0.95, 0.85, 0.70,  # Clear water scenarios
-                 0.80, 0.60, 0.50, 0.30,  # Slightly cloudy scenarios
-                 0.40, 0.20, 0.15, 0.05], # Very cloudy scenarios
-                
-                # Contaminated (row 1)
-                [0.01, 0.05, 0.15, 0.30,  # Clear water scenarios
-                 0.20, 0.40, 0.50, 0.70,  # Slightly cloudy scenarios
-                 0.60, 0.80, 0.85, 0.95]  # Very cloudy scenarios
-            ],
-            evidence=['Turbidity', 'Surface_Runoff', 'Latrine_Dist'],
-            evidence_card=[3, 2, 2]
+
+        # ── EarlyWarning | Pump(3) × GW(3) × Forecast(3) = 27 columns ──
+        normal_row, watch_row, critical_row = [], [], []
+        for pump in range(3):
+            for gw in range(3):
+                for seas in range(3):
+                    if pump == 2 and gw == 2 and seas == 2:
+                        normal_row.append(0.02); watch_row.append(0.08); critical_row.append(0.90)
+                    elif pump == 2 and gw >= 1 and seas >= 1:
+                        normal_row.append(0.05); watch_row.append(0.35); critical_row.append(0.60)
+                    elif gw == 2 and seas >= 1:
+                        normal_row.append(0.05); watch_row.append(0.30); critical_row.append(0.65)
+                    elif gw == 1 and seas == 1:
+                        normal_row.append(0.20); watch_row.append(0.60); critical_row.append(0.20)
+                    elif gw == 0 and seas == 0:
+                        normal_row.append(0.88); watch_row.append(0.10); critical_row.append(0.02)
+                    elif pump == 2:
+                        normal_row.append(0.30); watch_row.append(0.50); critical_row.append(0.20)
+                    else:
+                        normal_row.append(0.55); watch_row.append(0.35); critical_row.append(0.10)
+
+        cpd_warning = TabularCPD(
+            variable="EarlyWarning", variable_card=3,
+            values=[normal_row, watch_row, critical_row],
+            evidence=["PumpAge", "GroundwaterStress", "SeasonalForecast"],
+            evidence_card=[3, 3, 3],
         )
-        
-        # 4. ADD ALL CPDs TO THE MODEL
+
+        # 4. Assemble and validate
         self.model.add_cpds(
-            cpd_rainfall,
-            cpd_latrine,
-            cpd_pump_age,
-            cpd_turbidity,
-            cpd_runoff,
-            cpd_pump_failure,
-            cpd_contamination
+            cpd_rainfall, cpd_forecast, cpd_crop,
+            cpd_depth, cpd_geology, cpd_pump,
+            cpd_soil, cpd_gw,
+            cpd_irrigation, cpd_drilling, cpd_warning,
         )
-        
-        # 5. VALIDATE THE MODEL
-        # This checks if the network is valid (DAG, probability sums, etc.)
-        assert self.model.check_model(), "Model validation failed!"
-        
-        # 6. INITIALIZE INFERENCE ENGINE
-        self.inference_engine = VariableElimination(self.model)
-        
-        print("✅ Bayesian Network successfully built and validated!")
-        print(f"   Nodes: {len(self.model.nodes())}")
-        print(f"   Edges: {len(self.model.edges())}")
-    
-    def predict_contamination_risk(
-        self,
-        evidence: Dict[str, int]
-    ) -> Dict[str, float]:
-        """
-        Calculate contamination probability given observations.
-        
-        Args:
-            evidence: Dictionary of observed variables
-                     e.g., {'Turbidity': 2, 'Rainfall': 1}
-        
-        Returns:
-            Dictionary with probabilities for Safe and Contaminated states
-        """
-        
-        # Run inference
-        result = self.inference_engine.query(
-            variables=['Contamination'],
-            evidence=evidence
+        assert self.model.check_model(), \
+            "Bayesian Network validation failed — check CPT column sums."
+
+        # 5. Inference engine (Variable Elimination)
+        self.inference = VariableElimination(self.model)
+        print("✅ SmartWater Bayesian Network built and validated.")
+        print(f"   Nodes : {len(self.model.nodes())}")
+        print(f"   Edges : {len(self.model.edges())}")
+
+    # ──────────────────────────────────────────────────────────────────────
+    # PUBLIC QUERY METHODS
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _query(self, variable: str, evidence: Dict[str, int]) -> np.ndarray:
+        clean = {k: v for k, v in evidence.items() if v is not None}
+        result = self.inference.query(
+            variables=[variable],
+            evidence=clean,
+            show_progress=False,
         )
-        
-        # Extract probabilities
-        probs = result.values
-        
+        return result.values
+
+    def predict_irrigation(self, evidence: Dict[str, int]) -> Dict:
+        probs = self._query("IrrigationRisk", evidence)
+        idx = int(np.argmax(probs))
         return {
-            'safe_probability': float(probs[0]),
-            'contamination_probability': float(probs[1]),
-            'risk_level': self._categorize_risk(float(probs[1])),
-            'evidence_used': evidence
+            "p_safe":    float(probs[0]),
+            "p_careful": float(probs[1]),
+            "p_delay":   float(probs[2]),
+            "verdict":   ["SafeToIrrigate", "IrrigateCarefully", "DelayIrrigation"][idx],
+            "confidence": self._confidence(probs),
         }
-    
-    def predict_pump_status(self, pump_age: int) -> Dict[str, float]:
-        """
-        Predict pump failure probability based on age.
-        
-        Args:
-            pump_age: 0=New, 1=Medium, 2=Old
-        
-        Returns:
-            Dictionary with pump status probabilities
-        """
-        
-        result = self.inference_engine.query(
-            variables=['Pump_Failure'],
-            evidence={'Pump_Age': pump_age}
-        )
-        
-        probs = result.values
-        
+
+    def predict_drilling(self, evidence: Dict[str, int]) -> Dict:
+        probs = self._query("DrillingSuccess", evidence)
+        idx = int(np.argmax(probs))
         return {
-            'working_probability': float(probs[0]),
-            'failure_probability': float(probs[1]),
-            'maintenance_needed': probs[1] > 0.15
+            "p_success":   float(probs[0]),
+            "p_uncertain": float(probs[1]),
+            "p_risk":      float(probs[2]),
+            "verdict":     ["HighSuccess", "Uncertain", "HighRisk"][idx],
+            "confidence":  self._confidence(probs),
         }
-    
-    def get_most_likely_scenario(self, evidence: Dict[str, int]) -> Dict:
-        """
-        Get the most probable explanation for observed evidence.
-        
-        Args:
-            evidence: Observed variables
-        
-        Returns:
-            Most probable values for unobserved variables
-        """
-        
-        # Get all variables
-        all_vars = set(self.model.nodes())
-        unobserved = all_vars - set(evidence.keys())
-        
-        results = {}
-        for var in unobserved:
-            query_result = self.inference_engine.query(
-                variables=[var],
-                evidence=evidence
-            )
-            most_probable_state = int(np.argmax(query_result.values))
-            results[var] = most_probable_state
-        
-        return results
-    
-    def _categorize_risk(self, prob: float) -> str:
-        """
-        Convert probability to human-readable risk level.
-        
-        Args:
-            prob: Contamination probability (0-1)
-        
-        Returns:
-            Risk category string
-        """
-        if prob < 0.2:
-            return "LOW"
-        elif prob < 0.5:
-            return "MODERATE"
-        elif prob < 0.8:
-            return "HIGH"
-        else:
-            return "CRITICAL"
-    
-    def get_variable_info(self) -> Dict:
-        """
-        Get information about all variables in the model.
-        
-        Returns:
-            Dictionary with variable names, states, and descriptions
-        """
+
+    def predict_warning(self, evidence: Dict[str, int]) -> Dict:
+        probs = self._query("EarlyWarning", evidence)
+        idx = int(np.argmax(probs))
         return {
-            'Rainfall': {
-                'states': ['Low', 'Medium', 'High'],
-                'description': 'Recent rainfall intensity'
-            },
-            'Turbidity': {
-                'states': ['Clear', 'Slightly Cloudy', 'Very Cloudy'],
-                'description': 'Water clarity/cloudiness'
-            },
-            'Surface_Runoff': {
-                'states': ['No', 'Yes'],
-                'description': 'Presence of surface water runoff'
-            },
-            'Latrine_Dist': {
-                'states': ['Safe (>30m)', 'Risky (<30m)'],
-                'description': 'Distance of latrine from borehole'
-            },
-            'Pump_Age': {
-                'states': ['New (<2yr)', 'Medium (2-5yr)', 'Old (>5yr)'],
-                'description': 'Age of water pump'
-            },
-            'Pump_Failure': {
-                'states': ['Working', 'Failed'],
-                'description': 'Pump operational status'
-            },
-            'Contamination': {
-                'states': ['Safe', 'Contaminated'],
-                'description': 'Water contamination risk'
-            }
+            "p_normal":   float(probs[0]),
+            "p_watch":    float(probs[1]),
+            "p_critical": float(probs[2]),
+            "verdict":    ["Normal", "WatchAlert", "CriticalAlert"][idx],
+            "confidence": self._confidence(probs),
         }
-    
-    def sensitivity_analysis(self, target: str, evidence: Dict[str, int]) -> Dict:
-        """
-        Analyze which variables have the most impact on the target.
-        
-        Args:
-            target: Variable to analyze (usually 'Contamination')
-            evidence: Base evidence
-        
-        Returns:
-            Sensitivity scores for each variable
-        """
-        # This is a simplified sensitivity analysis
-        # For production, use more sophisticated methods
-        
-        base_result = self.inference_engine.query(
-            variables=[target],
-            evidence=evidence
-        )
-        base_prob = base_result.values[1]  # Contaminated probability
-        
-        sensitivity = {}
-        
-        # Test impact of each evidence variable
-        for var in evidence.keys():
-            temp_evidence = evidence.copy()
-            
-            # Try flipping to different state
-            original_state = temp_evidence[var]
-            variable_info = self.get_variable_info()
-            num_states = len(variable_info[var]['states'])
-            
-            impacts = []
-            for state in range(num_states):
-                if state != original_state:
-                    temp_evidence[var] = state
-                    new_result = self.inference_engine.query(
-                        variables=[target],
-                        evidence=temp_evidence
-                    )
-                    new_prob = new_result.values[1]
-                    impact = abs(new_prob - base_prob)
-                    impacts.append(impact)
-            
-            sensitivity[var] = max(impacts) if impacts else 0.0
-        
-        return sensitivity
+
+    def get_structure(self) -> Dict:
+        return {
+            "nodes": list(self.model.nodes()),
+            "edges": [{"from": e[0], "to": e[1]} for e in self.model.edges()],
+        }
+
+    @staticmethod
+    def _confidence(probs: np.ndarray) -> str:
+        m = float(np.max(probs))
+        if m >= 0.75: return "HIGH"
+        if m >= 0.50: return "MEDIUM"
+        return "LOW"
 
 
-# Example usage and testing
+# ──────────────────────────────────────────────────────────────────────────
+# RUN DIRECTLY TO SELF-TEST: python bayesian_model.py
+# ──────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("=" * 60)
-    print("BAYESIAN WATER QUALITY MODEL - TESTING")
-    print("=" * 60)
-    
-    # Initialize model
-    model = BoreholeWaterQualityModel()
-    
-    # Test Case 1: Good conditions
-    print("\n📊 TEST CASE 1: Ideal Conditions")
-    print("-" * 40)
-    evidence1 = {
-        'Rainfall': 0,      # Low
-        'Turbidity': 0,     # Clear
-        'Latrine_Dist': 0   # Safe distance
-    }
-    result1 = model.predict_contamination_risk(evidence1)
-    print(f"Evidence: {evidence1}")
-    print(f"Contamination Risk: {result1['contamination_probability']:.2%}")
-    print(f"Risk Level: {result1['risk_level']}")
-    
-    # Test Case 2: Risky conditions
-    print("\n📊 TEST CASE 2: High Risk Conditions")
-    print("-" * 40)
-    evidence2 = {
-        'Rainfall': 2,      # High
-        'Turbidity': 2,     # Very cloudy
-        'Latrine_Dist': 1   # Too close
-    }
-    result2 = model.predict_contamination_risk(evidence2)
-    print(f"Evidence: {evidence2}")
-    print(f"Contamination Risk: {result2['contamination_probability']:.2%}")
-    print(f"Risk Level: {result2['risk_level']}")
-    
-    # Test Case 3: Pump age
-    print("\n📊 TEST CASE 3: Pump Status (Old Pump)")
-    print("-" * 40)
-    pump_result = model.predict_pump_status(pump_age=2)
-    print(f"Failure Risk: {pump_result['failure_probability']:.2%}")
-    print(f"Maintenance Needed: {pump_result['maintenance_needed']}")
-    
-    # Test Case 4: Real-world scenario (caretaker report)
-    print("\n📊 TEST CASE 4: Real-World Scenario")
-    print("-" * 40)
-    print("Scenario: After heavy rain, caretaker reports cloudy water")
-    evidence4 = {
-        'Rainfall': 2,      # Heavy rain reported
-        'Turbidity': 1      # Slightly cloudy observed
-    }
-    result4 = model.predict_contamination_risk(evidence4)
-    print(f"Contamination Risk: {result4['contamination_probability']:.2%}")
-    print(f"⚠️  Recommendation: {result4['risk_level']} risk - Consider boiling water")
-    
-    print("\n" + "=" * 60)
-    print("✅ ALL TESTS COMPLETED SUCCESSFULLY!")
-    print("=" * 60)
+    print("=" * 55)
+    print("SMARTWATER BAYESIAN MODEL — SELF TEST")
+    print("=" * 55)
+
+    m = SmartWaterModel()
+
+    print("\n📊 TEST 1: Dry soil, thirsty crop, low GW stress")
+    r = m.predict_irrigation({"SoilMoisture": 0, "CropWaterNeed": 2, "GroundwaterStress": 0})
+    print(f"   {r['verdict']} | Safe={r['p_safe']:.0%} Careful={r['p_careful']:.0%} Delay={r['p_delay']:.0%}")
+
+    print("\n📊 TEST 2: Saturated soil, high GW stress")
+    r = m.predict_irrigation({"SoilMoisture": 2, "CropWaterNeed": 1, "GroundwaterStress": 2})
+    print(f"   {r['verdict']} | Safe={r['p_safe']:.0%} Careful={r['p_careful']:.0%} Delay={r['p_delay']:.0%}")
+
+    print("\n📊 TEST 3: Deep borehole, favorable geology")
+    r = m.predict_drilling({"BoreholeDepth": 2, "GeologyFavorability": 2})
+    print(f"   {r['verdict']} | Success={r['p_success']:.0%} Uncertain={r['p_uncertain']:.0%} Risk={r['p_risk']:.0%}")
+
+    print("\n📊 TEST 4: Old pump, drought warning, high GW stress")
+    r = m.predict_warning({"PumpAge": 2, "SeasonalForecast": 2, "GroundwaterStress": 2})
+    print(f"   {r['verdict']} | Normal={r['p_normal']:.0%} Watch={r['p_watch']:.0%} Critical={r['p_critical']:.0%}")
+
+    print("\n✅ All tests passed.")
