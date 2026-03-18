@@ -5,7 +5,7 @@ AI-Powered Groundwater & Irrigation Advisory
 Igabi & Zaria LGAs · Kaduna State, Nigeria
 
 Powered by a Bayesian Decision Engine
-ABU Zaria & IAR Zaria · M4D Open Innovation Challenge 2025/26
+M4D Open Innovation Challenge 2025/26
 """
 
 import streamlit as st
