@@ -1,14 +1,10 @@
-# Core Bayesian Network Library
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
 pgmpy==0.1.23
 numpy==1.24.3
-pandas==2.0.3
 scipy==1.11.1
-
-# Web Framework
-streamlit==1.28.0
-
-# Visualization
-plotly==5.18.0
-
-# Utilities
-python-dotenv==1.0.0
+networkx==3.3
+setuptools>=68.0.0
+pandas==2.0.3
+PYTHON_VERSION==3.11.0
