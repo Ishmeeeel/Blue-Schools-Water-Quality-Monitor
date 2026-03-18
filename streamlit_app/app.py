@@ -5,7 +5,7 @@ AI-Powered Groundwater & Irrigation Advisory
 Igabi & Zaria LGAs · Kaduna State, Nigeria
 
 Powered by a Bayesian Decision Engine
-M4D Open Innovation Challenge 2025/26
+ABU Zaria & IAR Zaria · M4D Open Innovation Challenge 2025/26
 """
 
 import streamlit as st
@@ -402,6 +402,41 @@ def inject_css():
     }
     [data-testid="stSidebar"] .block-container {
         padding-top: 1.2rem;
+    }
+    /* Hide the collapse arrow */
+    [data-testid="collapsedControl"],
+    button[kind="header"] {
+        display: none !important;
+    }
+
+    /* ── Farmer Profile Card ── */
+    .profile-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 1.2rem 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+    }
+    .profile-card-title {
+        font-family: 'Sora', sans-serif;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #1a6fa8;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-bottom: 0.8rem;
+    }
+    .profile-saved {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 0.84rem;
+        color: #15803d;
+        font-weight: 500;
+        margin-top: 0.5rem;
+        display: inline-block;
     }
     .sidebar-logo {
         text-align: center;
@@ -1166,29 +1201,6 @@ def render_sidebar():
 
         st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
 
-        # Farmer profile
-        st.markdown(f'<p class="sidebar-section">{L("sidebar_profile")}</p>', unsafe_allow_html=True)
-        st.session_state["farmer_name"] = st.text_input(
-            L("your_name"),
-            value=st.session_state.get("farmer_name", ""),
-            placeholder=L("name_placeholder"),
-            label_visibility="visible",
-        )
-
-        crops = CROP_OPTIONS[st.session_state.lang]
-        st.session_state["crop"] = st.selectbox(
-            L("main_crop"),
-            options=crops,
-        )
-
-        phone_opts = [L("phone_basic"), L("phone_feature"), L("phone_smart")]
-        st.session_state["phone"] = st.selectbox(
-            L("phone_type"),
-            options=phone_opts,
-        )
-
-        st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
-
         # About — dark text so it's visible on light sidebar
         st.markdown(f'<p class="sidebar-section">{L("sidebar_about")}</p>', unsafe_allow_html=True)
         st.markdown(
@@ -1552,6 +1564,73 @@ def tab_history():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FARMER PROFILE CARD
+# ══════════════════════════════════════════════════════════════════════════════
+
+def render_profile_card():
+    """Farmer profile card — sits between header and tabs in main content area."""
+    with st.container():
+        st.markdown(f'<div class="profile-card-title">👤 {L("sidebar_profile")}</div>', unsafe_allow_html=True)
+
+        col1, col2, col3, col4 = st.columns([3, 2, 2, 1], gap="medium")
+
+        with col1:
+            name_val = st.text_input(
+                L("your_name"),
+                value=st.session_state.get("farmer_name", ""),
+                placeholder=L("name_placeholder"),
+                key="profile_name_input",
+                label_visibility="visible",
+            )
+        with col2:
+            crops = CROP_OPTIONS[st.session_state.lang]
+            crop_val = st.selectbox(
+                L("main_crop"),
+                options=crops,
+                key="profile_crop_input",
+            )
+        with col3:
+            phone_opts = [L("phone_basic"), L("phone_feature"), L("phone_smart")]
+            phone_val = st.selectbox(
+                L("phone_type"),
+                options=phone_opts,
+                key="profile_phone_input",
+            )
+        with col4:
+            st.markdown("<div style='height:1.7rem'></div>", unsafe_allow_html=True)
+            save_btn = st.button(
+                "💾  Save",
+                type="primary",
+                use_container_width=True,
+                key="profile_save_btn",
+            )
+
+        if save_btn:
+            st.session_state["farmer_name"] = name_val
+            st.session_state["crop"]        = crop_val
+            st.session_state["phone"]       = phone_val
+            st.session_state["profile_saved"] = True
+
+        # Restore saved values into session on load (without button press)
+        if not save_btn:
+            if st.session_state.get("farmer_name", "") == "" and name_val:
+                pass  # Only save on button press
+            # Keep existing saved values in place
+            if "farmer_name" not in st.session_state:
+                st.session_state["farmer_name"] = ""
+
+        if st.session_state.get("profile_saved"):
+            farmer = st.session_state.get("farmer_name", "")
+            st.markdown(
+                f'<span class="profile-saved">✅ Profile saved'
+                f'{" — " + farmer if farmer else ""}!</span>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1579,6 +1658,9 @@ def main():
         st.markdown(f'<div class="status-connected">{L("connected")}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="status-demo">{L("demo_mode")}</div>', unsafe_allow_html=True)
+
+    # ── Farmer Profile Card ────────────────────────────────────────────────
+    render_profile_card()
 
     # ── Tabs ────────────────────────────────────────────────────────────────
     t1, t2, t3, t4 = st.tabs([
