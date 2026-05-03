@@ -912,6 +912,16 @@ def init_state():
         if k not in st.session_state:
             st.session_state[k] = v
 
+    # ── Restore farmer_id from URL on refresh ────────────────────────────────
+    try:
+        params = st.query_params
+        if "fid" in params and not st.session_state.get("farmer_id"):
+            st.session_state["farmer_id"] = params["fid"]
+        if "fname" in params and not st.session_state.get("farmer_name"):
+            st.session_state["farmer_name"] = params["fname"]
+    except Exception:
+        pass
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DEMO INFERENCE — mirrors PDF CPT logic without pgmpy
@@ -1681,6 +1691,12 @@ def render_profile_card():
             )
             if fid:
                 st.session_state["farmer_id"] = fid
+                # Save to URL so it survives page refresh
+                try:
+                    st.query_params["fid"]   = fid
+                    st.query_params["fname"] = name_val
+                except Exception:
+                    pass
 
         # Restore saved values into session on load (without button press)
         if not save_btn:
