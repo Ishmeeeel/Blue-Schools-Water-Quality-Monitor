@@ -906,6 +906,7 @@ def init_state():
         "fb_irr":       None,
         "fb_drill":     None,
         "fb_warn":      None,
+        "farmer_id":    None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -990,8 +991,12 @@ def check_api() -> bool:
 
 
 def call_irrigation(evidence: dict) -> np.ndarray:
+    farmer_id = st.session_state.get("farmer_id")
+    payload   = {**evidence}
+    if farmer_id:
+        payload["farmer_id"] = farmer_id
     try:
-        r = requests.post(f"{API_URL}/predict-irrigation", json=evidence, timeout=8)
+        r = requests.post(f"{API_URL}/predict-irrigation", json=payload, timeout=8)
         if r.status_code == 200:
             d = r.json()
             return np.array([d["p_safe"], d["p_careful"], d["p_delay"]])
@@ -1005,8 +1010,12 @@ def call_irrigation(evidence: dict) -> np.ndarray:
 
 
 def call_drilling(evidence: dict) -> np.ndarray:
+    farmer_id = st.session_state.get("farmer_id")
+    payload   = {**evidence}
+    if farmer_id:
+        payload["farmer_id"] = farmer_id
     try:
-        r = requests.post(f"{API_URL}/predict-drilling", json=evidence, timeout=8)
+        r = requests.post(f"{API_URL}/predict-drilling", json=payload, timeout=8)
         if r.status_code == 200:
             d = r.json()
             return np.array([d["p_success"], d["p_uncertain"], d["p_risk"]])
@@ -1016,8 +1025,12 @@ def call_drilling(evidence: dict) -> np.ndarray:
 
 
 def call_warning(evidence: dict) -> np.ndarray:
+    farmer_id = st.session_state.get("farmer_id")
+    payload   = {**evidence}
+    if farmer_id:
+        payload["farmer_id"] = farmer_id
     try:
-        r = requests.post(f"{API_URL}/predict-warning", json=evidence, timeout=8)
+        r = requests.post(f"{API_URL}/predict-warning", json=payload, timeout=8)
         if r.status_code == 200:
             d = r.json()
             return np.array([d["p_normal"], d["p_watch"], d["p_critical"]])
@@ -1028,6 +1041,33 @@ def call_warning(evidence: dict) -> np.ndarray:
         evidence["SeasonalForecast"],
         evidence["GroundwaterStress"],
     )
+
+
+def register_farmer_api(name: str, village: str = None,
+                        crop: str = None, phone: str = None) -> str:
+    """Register farmer on backend, return farmer_id."""
+    try:
+        payload = {"name": name}
+        if village: payload["village"] = village
+        if crop:    payload["crops_grown"] = [crop]
+        if phone:   payload["phone"] = phone
+        r = requests.post(f"{API_URL}/farmers/register", json=payload, timeout=8)
+        if r.status_code == 200:
+            return r.json().get("farmer_id")
+    except Exception:
+        pass
+    return None
+
+
+def fetch_farmer_history(farmer_id: str) -> list:
+    """Pull farmer assessment history from Supabase via backend."""
+    try:
+        r = requests.get(f"{API_URL}/farmers/{farmer_id}/history", timeout=8)
+        if r.status_code == 200:
+            return r.json().get("assessments", [])
+    except Exception:
+        pass
+    return []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1484,6 +1524,31 @@ def tab_warning():
 def tab_history():
     st.markdown(f"### {L('history_heading')}")
 
+    farmer_id = st.session_state.get("farmer_id")
+
+    # ── Try loading from Supabase first ──────────────────────────────────────
+    if farmer_id:
+        remote = fetch_farmer_history(farmer_id)
+        if remote:
+            # Normalise remote records to match local history format
+            for rec in remote:
+                ts      = rec.get("created_at","")[:16].replace("T"," ")
+                pvals   = rec.get("p_values", {})
+                module  = rec.get("module","").upper()[:4]
+                verdict = rec.get("prediction","")
+                probs   = list(pvals.values()) if pvals else [0.33,0.33,0.34]
+                # Avoid duplicates
+                existing_ts = [h["ts"] for h in st.session_state["history"]]
+                if ts not in existing_ts:
+                    st.session_state["history"].append({
+                        "ts":         ts,
+                        "farmer":     st.session_state.get("farmer_name","—"),
+                        "type":       module if module else rec.get("module","IRR").upper(),
+                        "verdict":    verdict,
+                        "confidence": rec.get("confidence","—"),
+                        "probs":      probs,
+                    })
+
     history = st.session_state.get("history", [])
 
     if not history:
@@ -1610,6 +1675,12 @@ def render_profile_card():
             st.session_state["crop"]        = crop_val
             st.session_state["phone"]       = phone_val
             st.session_state["profile_saved"] = True
+            # Register on backend → get persistent farmer_id
+            fid = register_farmer_api(
+                name=name_val, crop=crop_val, phone=phone_val or None
+            )
+            if fid:
+                st.session_state["farmer_id"] = fid
 
         # Restore saved values into session on load (without button press)
         if not save_btn:
