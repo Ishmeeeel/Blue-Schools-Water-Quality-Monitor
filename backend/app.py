@@ -13,7 +13,7 @@ POST /predict-drilling    → Borehole / drilling risk
 POST /predict-warning     → Early warning system
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
